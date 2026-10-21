@@ -150,7 +150,15 @@ const CARDS=[
 ["Better hot","Better cold"],["Unpopular opinion","Popular opinion"],["Feels short","Feels long"],
 ["Overrated city","Underrated city"],["Bad movie","Great movie"],["Normal to say at work","Weird to say at work"],
 ["Comfortable shoes","Painful shoes"],["Easy to learn","Hard to learn"],["Guilty pleasure","Proud pleasure"],
-["Worst topping","Best topping"],["Plain","Extravagant"],["Cringe","Cool"],["Temporary","Permanent"]
+["Worst topping","Best topping"],["Plain","Extravagant"],["Cringe","Cool"],["Temporary","Permanent"],
+["Tourist trap","Hidden gem"],["Famous only back home","Famous worldwide"],["Easy to pronounce","Impossible to pronounce"],
+["Overrated travel destination","Underrated travel destination"],["Polite at the dinner table","Rude at the dinner table"],
+["Overrated cuisine","Underrated cuisine"],["Cheap place to live","Expensive place to live"],["Easy language to learn","Hard language to learn"],
+["Small country","Huge country"],["Ancient tradition","Modern tradition"],["Bad souvenir","Great souvenir"],
+["Bad at football","Great at football"],["Normal in Germany","Weird in Germany"],["Easy to make friends there","Hard to make friends there"],
+["Bad public transport","Great public transport"],["Chill festival","Wild festival"],
+["Always on time","Relaxed about time"],["Says it directly","Hints at it politely"],
+["Awkward gift","Perfect gift"],["Sleepy city","Party city"]
 ];
 const CX=200, CY=205, R=190;
 const $=s=>document.querySelector(s);
@@ -216,16 +224,21 @@ function resign(){st.isHost=false;st.hostGame=null;setPres({host:null,hs:null,ga
 function fit(g){let s=JSON.stringify(g);while(new Blob([s]).size>3700&&g.q&&g.q.length){
     let li=0;g.q.forEach((e,i)=>{if(e.x.length>g.q[li].x.length)li=i});if(g.q[li].x.length<=8)break;g.q[li].x=g.q[li].x.slice(0,-4)+'…';s=JSON.stringify(g)}}
 function pushGame(){fit(st.hostGame);setPres({game:JSON.parse(JSON.stringify(st.hostGame))})}
+// half the targets land near an end (0–18% or 82–100%) to make the spicy, extreme calls more common
+function randT(){if(Math.random()<.5){const e=40+Math.floor(Math.random()*141);return Math.random()<.5?e:1000-e}return 40+Math.floor(Math.random()*921)}
 function deal(g){const out=[];const pool=shuffle(CARDS.map((_,i)=>i).filter(i=>!g.used.includes(i)));
-  for(let k=0;k<g.per;k++){const c=pool.length?pool.pop():Math.floor(Math.random()*CARDS.length);g.used.push(c);out.push([c,40+Math.floor(Math.random()*921)])}return out}
+  for(let k=0;k<g.per;k++){const c=pool.length?pool.pop():Math.floor(Math.random()*CARDS.length);g.used.push(c);out.push([c,randT()])}return out}
 function hostStart(){const g=st.hostGame;const ps=players();
   Object.assign(g,{phase:'write',rid:rnd(6),dl:Date.now()+g.mins*60000,as:{},used:[],q:[],res:[],idx:0});
   for(const p of ps){g.as[p.pid]=deal(g);g.names[p.pid]=p.nick}
   st.hostClues={};pushGame();refresh()}
 function startGuess(g){
   const order=shuffle(Object.keys(g.as));const q=[];
-  for(let k=0;k<g.per;k++)for(const pid of order){const x=String((st.hostClues[pid]||[])[k]||'').trim().slice(0,40);
-    if(x)q.push({p:pid,c:g.as[pid][k][0],t:g.as[pid][k][1],x})}
+  for(let k=0;k<g.per;k++)for(const pid of order){const e=(st.hostClues[pid]||[])[k];
+    const x=String(e&&typeof e==='object'?e.x||'':e||'').trim().slice(0,40);if(!x)continue;
+    let c=g.as[pid][k][0],t=g.as[pid][k][1];
+    if(e&&typeof e==='object'&&Number.isInteger(e.c)&&e.c>=0&&e.c<CARDS.length&&Number.isInteger(e.t)&&e.t>=40&&e.t<=960){c=e.c;t=e.t}
+    q.push({p:pid,c,t,x})}
   delete g.as;delete g.used;g.q=q;g.idx=0;g.res=[];g.phase=q.length?'guess':'end';
 }
 function hostTick(){
@@ -235,7 +248,7 @@ function hostTick(){
   for(const p of ps)if(g.names[p.pid]!==p.nick){g.names[p.pid]=p.nick;ch=true}
   if(g.phase==='write'){
     for(const p of ps)if(!g.as[p.pid]){g.as[p.pid]=deal(g);ch=true}
-    for(const p of ps)if(p.pres.rid===g.rid&&Array.isArray(p.pres.clues))st.hostClues[p.pid]=p.pres.clues.map(x=>String(x||''));
+    for(const p of ps)if(p.pres.rid===g.rid&&Array.isArray(p.pres.clues))st.hostClues[p.pid]=p.pres.clues.slice(0,8);
     const act=ps.filter(p=>g.as[p.pid]);
     if((act.length&&act.every(p=>p.pres.rid===g.rid&&p.pres.done))||Date.now()>=g.dl){startGuess(g);ch=true}
   }else if(g.phase==='guess'){
@@ -256,7 +269,7 @@ function refresh(){
   if(st.R){sc.hidden=false;sc.innerHTML=`Room <b>${esc(st.code.toUpperCase())}</b>`+(g&&g.q&&g.q.length&&g.phase!=='write'&&g.phase!=='lobby'?` · <b>${total(g)}</b> pts`:'')}
   else sc.hidden=true;
   let phase=st.api===undefined?'connecting':!st.api?'noapi':!st.R?(st.connecting?'connecting':'entry'):!g?'finding':g.phase;
-  const key=[phase,g&&g.rid,g&&g.idx,st.isHost,phase==='write'&&g.as&&g.as[st.pid]?'a':''].join('|');
+  const key=[phase,g&&g.rid,g&&g.idx,st.isHost,phase==='write'&&g.as&&g.as[st.pid]?'a'+(myPres.rid===g.rid?(myPres.wstep||0)+(myPres.done?'d':''):''):''].join('|');
   if(key!==st.key){st.key=key;build(phase,g)}
   update(phase,g);
 }
@@ -298,21 +311,35 @@ function build(phase,g){
   }
   if(phase==='write'){
     const mine=g.as&&g.as[st.pid];
-    if(myPres.rid!==g.rid)setPres({rid:g.rid,clues:Array(g.per).fill(''),done:false,ready:null,next:null,dial:null});
-    stage.innerHTML=`<section class="panel center"><p class="eyebrow">Time left to write</p><div class="timer" id="timer">--:--</div>
-      <div class="chips" id="plist" style="justify-content:center"></div></section>
-      ${!mine?`<section class="panel center"><p class="muted">Dealing you in…</p></section>`:
-      mine.map(([c,t],k)=>`<section class="scen"><p class="who">Your secret scenario ${k+1} of ${mine.length}</p>
-        <div class="dial">${dialSVG({target:t/10,needle:t/10})}</div>${endsHTML(c)}
-        <div class="field"><label for="c${k}">Clue that lands in the red zone</label><input type="text" id="c${k}" maxlength="40" autocomplete="off" placeholder="a word, a thing, a person…"></div></section>`).join('')+legend+
-      `<button class="btn" id="done">I'm done</button>`}`;
-    if(mine){
-      mine.forEach((_,k)=>{const el=$('#c'+k);el.value=(myPres.clues||[])[k]||'';
-        el.oninput=()=>{const cl=mine.map((_,j)=>$('#c'+j).value);setPres({clues:cl})}});
-      $('#done').onclick=()=>{if(myPres.done){setPres({done:false})}else{
-        const cl=mine.map((_,j)=>$('#c'+j).value);if(cl.some(x=>!x.trim())){$('#done').textContent='Fill in every clue first';setTimeout(()=>update('write',game()),1500);return}
-        setPres({clues:cl,done:true})}refresh()};
-    }return;
+    if(mine&&(myPres.rid!==g.rid||!Array.isArray(myPres.clues)||!myPres.clues.length)){
+      setPres({rid:g.rid,clues:mine.map(([c,t])=>({c,t,x:''})),wstep:0,done:false,ready:null,next:null,dial:null});
+      st.key='';return refresh()}
+    const step=myPres.wstep||0,finished=!mine||myPres.done||step>=mine.length;
+    const top=`<section class="panel center"><p class="eyebrow">Time left to write</p><div class="timer" id="timer">--:--</div></section>`;
+    if(!mine){stage.innerHTML=top+`<section class="panel center"><p class="muted">Dealing you in…</p></section>`;return}
+    if(finished){
+      stage.innerHTML=top+`<section class="panel center handoff"><h2>Your clues are in</h2>
+        <p class="muted">The game starts when everyone is done or the timer runs out.</p>
+        <div class="chips" id="plist" style="justify-content:center"></div></section>`;return}
+    const cur=myPres.clues[step];
+    stage.innerHTML=top+`<section class="scen" style="border:0"><p class="who">Your secret scenario ${step+1} of ${mine.length}</p>
+        <div class="dial">${dialSVG({target:cur.t/10,needle:cur.t/10})}</div>${endsHTML(cur.c)}
+        <div class="field"><label for="clue">Clue that lands in the blue zone</label><input type="text" id="clue" maxlength="40" autocomplete="off" placeholder="a word, a thing, a person…"></div>
+        <div class="row"><button class="btn ghost" id="reroll">New topic</button><button class="btn" id="nextc" disabled>${step+1>=mine.length?'Done':'Next'}</button></div></section>
+      <div class="chips" id="plist" style="justify-content:center"></div>`;
+    const inp=$('#clue'),nx=$('#nextc');
+    inp.value=cur.x||'';nx.disabled=!inp.value.trim();
+    const save=x=>{const cl=myPres.clues.map((e,j)=>j===step?{...e,x}:e);setPres({clues:cl})};
+    inp.oninput=()=>{nx.disabled=!inp.value.trim();save(inp.value)};
+    inp.onkeydown=e=>{if(e.key==='Enter'&&!nx.disabled)nx.click()};
+    $('#reroll').onclick=()=>{
+      const taken=new Set([...(g.used||[]),...myPres.clues.map(e=>e.c)]);
+      const pool=CARDS.map((_,i)=>i).filter(i=>!taken.has(i));
+      const c=pool.length?pool[Math.floor(Math.random()*pool.length)]:Math.floor(Math.random()*CARDS.length);
+      const cl=myPres.clues.map((e,j)=>j===step?{c,t:randT(),x:''}:e);
+      setPres({clues:cl});st.key='';refresh()};
+    nx.onclick=()=>{save(inp.value);const ns=step+1;setPres(ns>=mine.length?{wstep:ns,done:true}:{wstep:ns});refresh()};
+    setTimeout(()=>inp.focus(),0);return;
   }
   if(phase==='guess'){
     const q=g.q[g.idx],writer=q.p===st.pid;
@@ -345,13 +372,20 @@ function build(phase,g){
   if(phase==='end'){
     const max=g.q.length*4,tot=total(g),ratio=max?tot/max:0;
     const verdict=!max?'No clues were written.':ratio>=.75?'Basically telepathic.':ratio>=.55?'Totally in sync.':ratio>=.35?'Getting there.':'Different frequencies.';
-    const per={};g.q.forEach((e,i)=>{per[e.p]=per[e.p]||[0,0];per[e.p][0]+=(g.res[i]||[0,0])[1];per[e.p][1]+=4});
-    const rows=Object.entries(per).sort((a,b)=>b[1][0]-a[1][0]);
-    let best=null;g.q.forEach((e,i)=>{const r=g.res[i];if(r&&(!best||r[1]>best.p||(r[1]===best.p&&Math.abs(r[0]-e.t/10)<best.d)))best={e,p:r[1],d:Math.abs(r[0]-e.t/10)}});
+    const per={};g.q.forEach((e,i)=>{per[e.p]=per[e.p]||[0,0,0];per[e.p][0]+=(g.res[i]||[0,0])[1];per[e.p][1]+=4;per[e.p][2]++});
+    const rows=Object.entries(per).sort((a,b)=>b[1][0]/b[1][1]-a[1][0]/a[1][1]||b[1][0]-a[1][0]);
+    const all=g.q.map((e,i)=>{const r=g.res[i]||[50,0];return {e,p:r[1],d:Math.abs(r[0]-e.t/10)}}).sort((a,b)=>b.p-a.p||a.d-b.d);
+    const pc=p=>p===4?'var(--deep)':p===3?'var(--orange)':p===2?'var(--gold)':'var(--line)';
     stage.innerHTML=`<section class="panel center"><div class="big">${tot}</div><p class="muted">out of ${max} possible points</p><h2>${verdict}</h2></section>
-      ${rows.length?`<section class="panel"><p class="eyebrow">Points from each person's clues</p>
-      ${rows.map(([pid,[a,b]])=>`<div class="lrow"><span>${esc(nameOf(pid,g))}</span><b>${a} / ${b}</b></div>`).join('')}
-      ${best?`<p class="muted" style="font-size:.9rem">Best clue: “${esc(best.e.x)}” by ${esc(nameOf(best.e.p,g))}</p>`:''}</section>`:''}
+      ${rows.length?`<section class="panel"><p class="eyebrow">Best clue givers</p>
+      ${rows.map(([pid,[a,b,n]],i)=>`<div class="lrow"><span>${i===0?'🏆 ':''}${esc(nameOf(pid,g))}</span><b>${a} / ${b} pts</b></div>`).join('')}
+      <p class="muted" style="font-size:.85rem">Ranked by how many points the group scored on each person's clues.</p></section>
+      <section class="panel"><p class="eyebrow">Every clue, best guessed first</p>
+      ${all.map(({e,p})=>`<div style="display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start">
+        <b style="background:${pc(p)};color:${p===4?'var(--text)':'var(--space)'};border-radius:10px;min-width:40px;text-align:center;padding:4px 0;font-variant-numeric:tabular-nums">+${p}</b>
+        <div style="min-width:0"><div style="font-weight:700;text-transform:uppercase;overflow-wrap:anywhere">${esc(e.x)}</div>
+        <div class="muted" style="font-size:.85rem;overflow-wrap:anywhere">by ${esc(nameOf(e.p,g))} · ${esc((CARDS[e.c]||['?','?'])[0])} ↔ ${esc((CARDS[e.c]||['?','?'])[1])}</div></div></div>`).join('')}
+      </section>`:''}
       ${st.isHost?`<button class="btn" id="again">Play again</button>`:`<p class="muted center">The host can start another game.</p>`}`;
     if(st.isHost)$('#again').onclick=()=>{const o=st.hostGame;st.hostGame={phase:'lobby',per:o.per,mins:o.mins,names:{}};pushGame();refresh()};
   }
@@ -369,9 +403,7 @@ function update(phase,g){
     else{const h=hostInfo();$('#wait').textContent=`Waiting for ${h?h.nick:'the host'} to start the game.`}
   }
   if(phase==='write'){
-    $('#plist').innerHTML=chips(g,true);
-    const d=$('#done');if(d&&!d.textContent.startsWith('Fill')){d.textContent=myPres.done?'Edit my clues':"I'm done";
-      g.as[st.pid].forEach((_,k)=>{$('#c'+k).disabled=!!myPres.done})}
+    const pl=$('#plist');if(pl)pl.innerHTML=chips(g,true);
     tickTimer(g);
   }
   if(phase==='guess'){
