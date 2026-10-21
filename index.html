@@ -119,7 +119,7 @@ input:disabled{opacity:.6}
 @media (prefers-reduced-motion:reduce){.bands.reveal{animation:none}.btn{transition:none}}
 </style>
 
-<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/mqtt@5.15.1/dist/mqtt.min.js"></script>
 </head><body>
 <div class="wrap">
   <header>
@@ -410,50 +410,81 @@ function bindDial(g){
 }
 
 
-/* ---------- transport: PeerJS (the room creator's phone hosts the room) ---------- */
-const PREFIX='tunein-v1-room-';
+/* ---------- transport: relayed through public MQTT servers (works on any network) ---------- */
+const BROKERS=['wss://broker.hivemq.com:8884/mqtt','wss://broker.emqx.io:8084/mqtt'];
+const TOPIC='wavelength-ou7k/v1/';
 function merge(o,patch){for(const k in patch){if(patch[k]===null)delete o[k];else o[k]=patch[k]}}
+function makeBus(onMsg,onStatus){
+  const id=rnd(10);let seq=0;const seen=new Set(),order=[],subs=new Set();
+  const clients=BROKERS.map(url=>{let c;try{c=mqtt.connect(url,{clientId:'wl_'+rnd(12),reconnectPeriod:2000,connectTimeout:8000,keepalive:20,clean:true})}catch(e){return null}
+    c.on('connect',()=>{for(const t of subs)c.subscribe(t);onStatus()});
+    c.on('close',onStatus);c.on('offline',onStatus);c.on('error',()=>{});
+    c.on('message',(topic,buf)=>{let m;try{m=JSON.parse(buf.toString())}catch(e){return}
+      if(!m||typeof m.id!=='string')return;const k=m.id+':'+m.s;if(seen.has(k))return;
+      seen.add(k);order.push(k);if(order.length>3000)seen.delete(order.shift());
+      if(m.id!==id)onMsg(topic,m)});
+    return c}).filter(Boolean);
+  return {id,up:()=>clients.some(c=>c.connected),
+    sub(t){subs.add(t);for(const c of clients)if(c.connected)c.subscribe(t)},
+    pub(t,o){o.id=id;o.s=++seq;const p=JSON.stringify(o);for(const c of clients)if(c.connected)c.publish(t,p)},
+    end(){for(const c of clients)try{c.end(true)}catch(e){}}};
+}
 function createTransport(code,asHost){
   return new Promise((resolve,reject)=>{
-    const L={peers:new Set(),conn:new Set()};let list=[],connected=false,settled=false;
+    const UP=TOPIC+code+'/up',DOWN=TOPIC+code+'/down';
+    const L={peers:new Set(),conn:new Set()};let list=[],connected=false,settled=false;const timers=[];
     const T={peers:()=>list,
       onPeers(f){L.peers.add(f);setTimeout(()=>f({peers:list}),0);return()=>L.peers.delete(f)},
       onConnection(f){L.conn.add(f);setTimeout(()=>f(connected),0);return()=>L.conn.delete(f)}};
     const emitPeers=()=>{for(const f of L.peers)f({peers:list})};
-    const setConn=c=>{connected=c;for(const f of L.conn)f(c)};
-    const fail=e=>{if(!settled){settled=true;reject(e)}};
+    const setConn=c=>{if(c===connected)return;connected=c;for(const f of L.conn)f(c)};
+    const cleanup=()=>{timers.forEach(clearInterval);timers.length=0;bus.end()};
+    const fail=e=>{if(!settled){settled=true;cleanup();reject(e)}};
     const ok=()=>{if(!settled){settled=true;resolve(T)}};
+    let onMsg=()=>{},onStatus=()=>{};
+    const bus=makeBus((t,m)=>onMsg(t,m),()=>onStatus());
+    const waitUp=new Promise(res=>{const t0=Date.now();const iv=setInterval(()=>{if(bus.up()){clearInterval(iv);res(true)}else if(Date.now()-t0>10000){clearInterval(iv);res(false)}},100)});
     if(asHost){
-      const peer=new Peer(PREFIX+code);const others=new Map();const self={presence:{},updatedAt:Date.now()};
-      const rebuild=()=>{list=[{peer:'host',presence:self.presence,updatedAt:self.updatedAt,sameTab:true},
-        ...[...others].filter(([,o])=>o.open).map(([id,o])=>({peer:id,presence:o.presence,updatedAt:o.updatedAt,sameTab:false}))]};
+      const others=new Map(),self={presence:{},updatedAt:Date.now()};let probing=true;
+      const rebuild=()=>{list=[{peer:bus.id,presence:self.presence,updatedAt:self.updatedAt,sameTab:true},
+        ...[...others].map(([id,o])=>({peer:id,presence:o.presence,updatedAt:o.updatedAt,sameTab:false}))]};
       let queued=false;
-      const broadcast=()=>{if(queued)return;queued=true;setTimeout(()=>{queued=false;rebuild();emitPeers();
-        const now=Date.now(),peers=list.map(p=>({peer:p.peer,presence:p.presence,updatedAt:p.updatedAt}));
-        for(const [id,o] of others){if(!o.open)continue;try{o.conn.send(JSON.stringify({t:'s',now,you:id,peers}))}catch(e){}}},40)};
+      const send=()=>{const now=Date.now();bus.pub(DOWN,{t:'s',now,peers:list.map(p=>({peer:p.peer,presence:p.presence,updatedAt:p.updatedAt}))})};
+      const broadcast=()=>{if(queued)return;queued=true;setTimeout(()=>{queued=false;rebuild();emitPeers();send()},80)};
+      onMsg=(topic,m)=>{
+        if(topic===DOWN&&m.t==='s'&&probing)fail({type:'unavailable-id'});
+        if(topic!==UP||probing)return;
+        let o=others.get(m.id);
+        if(m.t==='bye'){if(o){others.delete(m.id);broadcast()}return}
+        if(!o){o={presence:{},updatedAt:Date.now(),last:Date.now()};others.set(m.id,o)}
+        o.last=Date.now();
+        if(m.t==='f'&&m.pres&&typeof m.pres==='object'){const before=JSON.stringify(o.presence);o.presence={...m.pres};if(JSON.stringify(o.presence)!==before)o.updatedAt=Date.now();broadcast()}
+        else if(m.t==='p'&&m.patch&&typeof m.patch==='object'){merge(o.presence,m.patch);o.updatedAt=Date.now();broadcast()}
+      };
+      onStatus=()=>setConn(bus.up());
       T.presence=async patch=>{merge(self.presence,patch);self.updatedAt=Date.now();broadcast()};
-      T.leave=async()=>{peer.destroy();setConn(false)};
-      peer.on('open',()=>{setConn(true);rebuild();ok()});
-      peer.on('connection',conn=>{const o={conn,presence:{},updatedAt:Date.now(),open:false};others.set(conn.peer,o);
-        conn.on('open',()=>{o.open=true;broadcast()});
-        conn.on('data',d=>{let m;try{m=JSON.parse(d)}catch(e){return}
-          if(m&&m.t==='p'&&m.patch&&typeof m.patch==='object'){merge(o.presence,m.patch);o.updatedAt=Date.now();broadcast()}});
-        const drop=()=>{if(others.get(conn.peer)===o){others.delete(conn.peer);broadcast()}};
-        conn.on('close',drop);conn.on('error',drop)});
-      peer.on('disconnected',()=>{try{peer.reconnect()}catch(e){}});
-      peer.on('error',e=>fail(e));
+      T.leave=async()=>{cleanup();setConn(false)};
+      waitUp.then(up=>{if(!up)return fail({type:'offline'});
+        bus.sub(UP);bus.sub(DOWN);
+        setTimeout(()=>{if(settled)return;probing=false;setConn(true);rebuild();ok();send();
+          timers.push(setInterval(()=>{const now=Date.now();let ch=false;
+            for(const [id,o] of others)if(now-o.last>12000){others.delete(id);ch=true}
+            if(ch){rebuild();emitPeers()}send()},2000))},1800)});
     }else{
-      const peer=new Peer();let conn=null;const pres={};
-      T.presence=async patch=>{merge(pres,patch);if(conn&&conn.open)try{conn.send(JSON.stringify({t:'p',patch}))}catch(e){}};
-      T.leave=async()=>{peer.destroy();setConn(false)};
-      peer.on('open',()=>{conn=peer.connect(PREFIX+code,{reliable:true});
-        const to=setTimeout(()=>{fail({type:'timeout'});peer.destroy()},12000);
-        conn.on('open',()=>{clearTimeout(to);setConn(true);conn.send(JSON.stringify({t:'p',patch:pres}));ok()});
-        conn.on('data',d=>{let m;try{m=JSON.parse(d)}catch(e){return}
-          if(m&&m.t==='s'&&Array.isArray(m.peers)){const off=Date.now()-m.now;
-            list=m.peers.map(p=>({peer:p.peer,presence:p.presence||{},updatedAt:p.updatedAt+off,sameTab:p.peer===m.you}));emitPeers()}});
-        conn.on('close',()=>{setConn(false);list=list.filter(p=>p.sameTab);emitPeers()})});
-      peer.on('error',e=>{fail(e);if(settled&&e.type!=='peer-unavailable'){setConn(false)}});
+      const pres={};let pending=null,flushT=null,hostId=null,lastState=0;
+      const flush=()=>{flushT=null;if(pending){bus.pub(UP,{t:'p',patch:pending});pending=null}};
+      T.presence=async patch=>{merge(pres,patch);pending=Object.assign(pending||{},patch);if(!flushT)flushT=setTimeout(flush,60)};
+      T.leave=async()=>{try{bus.pub(UP,{t:'bye'})}catch(e){}setTimeout(cleanup,300);setConn(false)};
+      onMsg=(topic,m)=>{if(topic!==DOWN||m.t!=='s'||!Array.isArray(m.peers))return;
+        if(!hostId)hostId=m.id;if(m.id!==hostId)return;
+        lastState=Date.now();const off=Date.now()-m.now;
+        list=m.peers.map(p=>({peer:p.peer,presence:p.presence||{},updatedAt:p.updatedAt+off,sameTab:p.peer===bus.id}));
+        setConn(true);emitPeers();ok()};
+      waitUp.then(up=>{if(!up)return fail({type:'offline'});
+        bus.sub(DOWN);
+        const hello=()=>bus.pub(UP,{t:'f',pres});
+        hello();timers.push(setInterval(()=>{hello();if(settled&&Date.now()-lastState>9000)setConn(false)},2500));
+        setTimeout(()=>{if(!settled)fail({type:'peer-unavailable'})},9000)});
     }
   });
 }
@@ -467,8 +498,8 @@ async function enterRoom(code,create,attempt=0){
       if(store.get('ti_host')==='1'&&attempt<6){setTimeout(()=>enterRoom(code,true,attempt+1),2500);return}
       return enterRoom(rnd(4),true)}
     st.connecting=false;store.set('ti_code',null);store.set('ti_host',null);
-    st.err=t==='peer-unavailable'?'No room with that code. Check it with whoever created the room.':
-      t==='timeout'?"Couldn't reach that room. Try again, or both connect to the same Wi‑Fi.":
+    st.err=t==='peer-unavailable'?'No room with that code. Check the code, and make sure the person who created the room still has the game open.':
+      t==='offline'?"Couldn't reach the game servers. Check your internet connection and try again.":
       'Could not connect. Check your internet connection and try again.';
     refresh();return}
   st.connecting=false;store.set('ti_code',code);store.set('ti_host',create?'1':null);
@@ -476,7 +507,7 @@ async function enterRoom(code,create,attempt=0){
   st.joinedAt=Date.now();
   if(create)becomeHost(null);
   st.R.onPeers(()=>{hostTick();refresh()});
-  st.R.onConnection(c=>{const el=$('#conn');el.hidden=c;el.textContent=create?'Connection lost. Trying to reconnect…':'Lost connection to the room. The host may have left; tap Leave and rejoin.'});
+  st.R.onConnection(c=>{const el=$('#conn');el.hidden=c;el.textContent=create?'Connection lost. Trying to reconnect…':'Lost connection to the room. Reconnecting… if this stays, the host may have closed the game.'});
   refresh();
 }
 $('#leave').onclick=async()=>{const r=st.R;st.R=null;st.isHost=false;st.hostGame=null;st.lastGame=null;myPres={};store.set('ti_code',null);store.set('ti_host',null);$('#conn').hidden=true;
@@ -490,7 +521,7 @@ setInterval(()=>{
 },500);
 
 refresh();
-st.api=typeof Peer==='function'?{}:null;
+st.api=typeof mqtt==='object'||typeof mqtt==='function'?{}:null;
 refresh();
 {const c=store.get('ti_code');if(st.api&&c&&st.nick)enterRoom(c,store.get('ti_host')==='1')}
 </script>
