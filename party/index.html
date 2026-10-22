@@ -64,6 +64,8 @@ button{font-family:inherit}
 .spinner{width:56px;height:56px;margin:12px auto;border-radius:50%;border:7px solid var(--line);border-top-color:var(--red);animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(1turn)}}
 .big-msg{font-size:1.3rem;font-weight:800;margin:0}
+.modal{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:16px;background:rgba(29,29,44,.55)}
+.modal .card{width:min(400px,100%)}
 /* lobby */
 .bar{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .lobby-grid{display:grid;gap:16px}.col{display:flex;flex-direction:column;gap:16px;min-width:0}

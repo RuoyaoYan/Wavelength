@@ -174,6 +174,24 @@ function bind(session) {
   }
 }
 
+// In-page yes/no dialog. window.confirm is silently answered "no" by some in-app and
+// embedded browsers, which made Close room and End party do nothing there.
+function askConfirm(text, okLabel) {
+  return new Promise(resolve => {
+    const box = document.createElement('div');
+    box.className = 'modal';
+    box.innerHTML = `<div class="card center" role="alertdialog" aria-modal="true" aria-label="${esc(text)}">
+        <h2>${esc(text)}</h2>
+        <div class="row"><button class="btn ghost" data-v="0">Cancel</button><button class="btn red" data-v="1">${esc(okLabel)}</button></div></div>`;
+    const done = v => { box.remove(); removeEventListener('keydown', onKey); resolve(v); };
+    const onKey = e => { if (e.key === 'Escape') done(false); };
+    box.addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (b) done(b.dataset.v === '1'); else if (e.target === box) done(false); });
+    addEventListener('keydown', onKey);
+    document.body.appendChild(box);
+    box.querySelector('[data-v="1"]').focus();
+  });
+}
+
 // ---------- lobby ----------
 function renderLobby() {
   const room = S.room;
@@ -227,8 +245,8 @@ function renderLobby() {
   if (qr && window.qrcode) {
     try { const q = qrcode(0, 'M'); q.addData(joinUrl(room.code)); q.make(); qr.innerHTML = q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); } catch (_) {}
   }
-  document.getElementById('leave').onclick = () => {
-    if (isHost() && !confirm('Close the room for everyone?')) return;
+  document.getElementById('leave').onclick = async () => {
+    if (isHost() && !(await askConfirm('Close the room for everyone?', 'Close room'))) return;
     leave();
   };
   app.querySelectorAll('.gcard').forEach(b => b.onclick = () => S.session.startGame(b.dataset.g));
@@ -238,7 +256,7 @@ function renderLobby() {
     S.session.startGame(pickRandomGame(ok, room.lastGame, Math.random));
   };
   const end = document.getElementById('endparty');
-  if (end) end.onclick = () => { if (confirm('End the party and show the winners?')) S.session.endParty(); };
+  if (end) end.onclick = async () => { if (await askConfirm('End the party and show the winners?', 'End party')) S.session.endParty(); };
 }
 
 // ---------- in a game ----------
