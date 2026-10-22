@@ -32,7 +32,7 @@ export class HostSession {
         pid = res.player.pid; // may differ from msg.pid when a dropped player is reclaimed by name
         const old = this.conns.get(pid);
         this.conns.set(pid, conn);
-        if (old && old !== conn) old.close();
+        if (old && old !== conn) { old.sendR({ t: 'replaced' }); setTimeout(() => old.close(), 250); }
         conn.sendR({ t: 'welcome', pid });
         if (res.rejoined && this.game) this.game.setConnected?.(pid, true);
         this.broadcastRoom();
@@ -138,7 +138,7 @@ export class ClientSession {
     this.conn = conn; this.pid = pid;
     this.welcomed = false; this.gone = false;
     this.onRoom = noop; this.onStart = noop; this.onSnap = noop; this.onEvent = noop;
-    this.onEnd = noop; this.onReject = noop; this.onHostGone = noop;
+    this.onEnd = noop; this.onReject = noop; this.onHostGone = noop; this.onReplaced = noop;
     conn.onR(msg => {
       switch (msg.t) {
         case 'welcome': this.welcomed = true; this.pid = msg.pid; break;
@@ -148,6 +148,7 @@ export class ClientSession {
         case 'ev': this.onEvent(msg.d); break;
         case 'end': this.onEnd({ placements: msg.placements, room: msg.room }); break;
         case 'bye': this.closedByHost = true; this.hostGone(); break;
+        case 'replaced': this.gone = this.replaced = true; this.onReplaced(); break;
       }
     });
     conn.onU(msg => { if (msg.t === 'snap') this.onSnap(msg.s); });

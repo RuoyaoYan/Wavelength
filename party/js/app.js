@@ -166,6 +166,10 @@ function bind(session) {
     session.onReject = reason => renderError(
       reason === 'full' ? 'Room is full (10 players)' : reason === 'name' ? 'Someone already has that name' : 'Please type a name',
       reason === 'name' ? 'Pick a different name and join again.' : 'Ask the host to start another room.', null);
+    session.onReplaced = () => {
+      if (session !== S.session) return;
+      renderError('Playing somewhere else', 'You joined this room from another tab or device, so this one stepped aside.', null);
+    };
     session.onHostGone = () => {
       if (session !== S.session) return;
       if (session.closedByHost) renderError('Host disconnected', 'The host closed the room.', null);
@@ -353,7 +357,7 @@ async function keepAwake() {
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !S.session) return;
   keepAwake();
-  if (S.role === 'phone' && S.session.gone && !S.session.rejected && !S.session.closedByHost) reconnect();
+  if (S.role === 'phone' && S.session.gone && !S.session.rejected && !S.session.closedByHost && !S.session.replaced) reconnect();
 });
 // Leaving the page: the host says goodbye to everyone; a phone drops its link at once so the
 // host marks it away now instead of after the heartbeat runs out (it rejoins on return).

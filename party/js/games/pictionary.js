@@ -4,7 +4,7 @@ import { groupByScore, shuffle, esc } from './common.js';
 import { WORDS } from './words.js';
 
 export const INTRO = 2, CHOOSE_TIME = 10, TURN_TIME = 60, REVEAL_TIME = 4;
-const MAX_PTS = 200, MAX_STROKES = 400;
+const MAX_PTS = 200, MAX_STROKES = 400, SYNC_PTS = 300;
 
 export const normalizeGuess = s => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -43,6 +43,7 @@ function createHost({ players, rng, emit }) {
   };
   function nextTurn() {
     turn++;
+    while (turn < turns.length && !online.has(turns[turn])) turn++; // skip drawers who left
     if (turn >= turns.length) { phase = 'done'; return; }
     drawer = turns[turn]; options = pickOptions(); word = ''; correct = []; gained = {}; strokes = [];
     phase = 'choose'; t = 0;
@@ -66,7 +67,11 @@ function createHost({ players, rng, emit }) {
       if (!d || typeof d !== 'object') return;
       if (d.type === 'sync') {
         // A view that fell behind (or rejoined) gets the whole drawing, and the drawer their word.
-        for (let i = 0; i < strokes.length || i === 0; i += 40) emit({ type: 'strokes', first: i === 0, strokes: strokes.slice(i, i + 40) }, pid);
+        // Replayed in small pieces: PeerJS refuses JSON messages near 16 KB.
+        emit({ type: 'strokes', first: true, strokes: [] }, pid);
+        for (const st of strokes)
+          for (let i = 0; i < st.pts.length; i += SYNC_PTS)
+            emit({ type: 'stroke', sync: true, id: st.id, color: st.color, size: st.size, pts: st.pts.slice(i, i + SYNC_PTS) }, pid);
         if (pid === drawer && phase === 'choose') emit({ type: 'choose', options }, pid);
         if (pid === drawer && phase === 'draw') emit({ type: 'word', word }, pid);
         return;
@@ -105,7 +110,8 @@ function createHost({ players, rng, emit }) {
         correct.push(pid);
         emit({ type: 'correct', pid, pts });
         if (!guessersLeft().length) endTurn();
-      } else if (target.length >= 4 && editDistance(g, target) === 1) {
+      } else if (g.includes(target) || editDistance(g, target) === 1) {
+        // Contains the word, or one letter off: say so privately; sharing it would give it away.
         emit({ type: 'close', text }, pid);
       } else {
         emit({ type: 'chat', pid, text });
@@ -304,12 +310,12 @@ function createView({ el, me, players, isScreen, send }) {
         case 'choose': options = ev.options; if (snap) render(); break;
         case 'word': myWord = ev.word; if (snap && snap.phase === 'draw') render(); break;
         case 'stroke': {
-          if (isDrawer()) break;
+          if (isDrawer() && !ev.sync) break; // the drawer already has its own live strokes
           let s = strokes.find(q => q.id === ev.id);
           if (!s) { s = { id: ev.id, color: ev.color, size: ev.size, pts: [] }; strokes.push(s); }
           s.pts.push(...ev.pts); queueDraw(); break;
         }
-        case 'strokes': if (ev.first) strokes = []; if (!isDrawer() || ev.first) strokes.push(...ev.strokes); queueDraw(); break;
+        case 'strokes': if (ev.first) strokes = []; strokes.push(...ev.strokes); queueDraw(); break;
         case 'undo': { const i = strokes.findIndex(q => q.id === ev.id); if (i >= 0) strokes.splice(i, 1); queueDraw(); break; }
         case 'clear': strokes = []; queueDraw(); break;
         case 'chat': feed.push({ k: 'chat', pid: ev.pid, text: ev.text }); updateFeed(); break;

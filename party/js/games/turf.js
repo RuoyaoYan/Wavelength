@@ -76,6 +76,7 @@ function createHost({ players, rng }) {
         q.vx += (ix * SPEED - q.vx) * k; q.vy += (iy * SPEED - q.vy) * k;
         q.x = clamp(q.x + q.vx * dt, R, W - R); q.y = clamp(q.y + q.vy * dt, R, H - R);
         const presses = q.in.b?.Splat || 0;
+        if (presses < q.splatSeen) q.splatSeen = 0; // phone restarted its counter (rejoin)
         if (presses > q.splatSeen) {
           q.splatSeen = presses;
           if (q.cd <= 0) { paint(q.x, q.y, SPLAT_R, q.team); q.cd = SPLAT_CD; }

@@ -11,7 +11,7 @@ function wrap(dc) {
   let closed = false, lastSeen = Date.now(), fast = null;
   const conn = {
     id: dc.connectionId,
-    sendR(msg) { if (!closed && dc.open) dc.send(msg); },
+    sendR(msg) { if (!closed && dc.open) { try { dc.send(msg); } catch (_) {} } },
     sendU(msg) {
       if (closed) return;
       if (fast && fast.readyState === 'open') { try { fast.send(JSON.stringify(msg)); } catch (_) {} }
@@ -35,7 +35,9 @@ function wrap(dc) {
     r.forEach(f => f(msg));
   });
   dc.on('close', shut);
-  dc.on('error', shut);
+  // PeerJS reports per-message problems (e.g. message-too-big) as errors; they don't mean
+  // the link is dead, so leave that call to the heartbeat instead of hanging up.
+  dc.on('error', () => {});
   try {
     fast = dc.peerConnection.createDataChannel('fast', { negotiated: true, id: FAST_ID, ordered: false, maxRetransmits: 0 });
     fast.onmessage = e => { lastSeen = Date.now(); try { const m = JSON.parse(e.data); u.forEach(f => f(m)); } catch (_) {} };

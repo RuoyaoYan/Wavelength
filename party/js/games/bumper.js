@@ -61,6 +61,7 @@ function createHost({ players }) {
         const ix = b.in.x || 0, iy = b.in.y || 0, mag = Math.hypot(ix, iy);
         if (mag > 0.01) { b.fx = ix / mag; b.fy = iy / mag; }
         const presses = b.in.b?.Dash || 0;
+        if (presses < b.dashSeen) b.dashSeen = 0; // phone restarted its counter (rejoin)
         if (presses > b.dashSeen) {
           b.dashSeen = presses;
           if (b.cd <= 0) { b.vx += b.fx * DASH; b.vy += b.fy * DASH; b.cd = DASH_CD; }

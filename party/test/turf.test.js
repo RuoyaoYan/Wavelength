@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+const SPLAT_WAIT = 4.1;
 import turf, { makeTeams, brushRadius, GRID_W, GRID_H, COUNTDOWN, MATCH, OVER } from '../js/games/turf.js';
 import { mulberry32 } from '../js/games/common.js';
 
@@ -91,4 +92,17 @@ test('ten players finish with every pid placed once', () => {
   run(COUNTDOWN + MATCH + OVER + 0.1);
   const flat = host.result().flat();
   assert.equal(flat.length, 10); assert.equal(new Set(flat).size, 10);
+});
+
+test('after a rejoin the splat counter restarts and the next press still splats', () => {
+  const { host, run, S } = setup(2);
+  run(COUNTDOWN + 0.05);
+  host.input('p0', { x: 0, y: 0, b: { Splat: 5 } }); host.step(STEP);
+  run(SPLAT_WAIT);
+  host.setConnected('p0', false); host.setConnected('p0', true);
+  const p = S.ps.find(q => q.pid === 'p0'); p.x += 150;
+  const count = () => S.grid.filter(v => v === S.teamOf.p0 + 1).length;
+  const c0 = count();
+  host.input('p0', { x: 0, y: 0, b: { Splat: 1 } }); host.step(STEP);
+  assert.ok(count() - c0 > 30, 'splat after rejoin');
 });

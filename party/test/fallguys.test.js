@@ -90,3 +90,15 @@ test('beans steer with the stick and dive once per cooldown', () => {
   const v2 = Math.hypot(a.vx, a.vy);
   assert.ok(v1 > 250 && v2 < 120, `${v1} ${v2}`);
 });
+
+test('after a rejoin the dive counter restarts and the next press still dives', () => {
+  const { host, run, S } = setup(2);
+  run(COUNTDOWN + 0.05);
+  const a = bean(S, 'a');
+  host.input('a', { x: 0, y: -1, b: { Dive: 5 } }); host.step(STEP);
+  run(1.2);
+  host.setConnected('a', false); host.setConnected('a', true);
+  a.vx = a.vy = 0;
+  host.input('a', { x: 0, y: -1, b: { Dive: 1 } }); host.step(STEP);
+  assert.ok(Math.hypot(a.vx, a.vy) > 250, 'dive after rejoin');
+});

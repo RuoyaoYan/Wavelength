@@ -108,8 +108,51 @@ test('strokes from the drawer are relayed; strokes from guessers are ignored; sy
   host.event(drawer, { type: 'stroke', id: 's1', pts: [[0.3, 0.3]] });
   host.event(guesser, { type: 'stroke', id: 'x', pts: [[0.5, 0.5]], color: '#f00', size: 1 });
   assert.equal(host.snapshot().strokes, 1);
+  const from = sent.length;
   host.event(guesser, { type: 'sync' });
-  const sync = lastOf(sent, 'strokes');
-  assert.equal(sync.to, guesser);
-  assert.equal(sync.ev.strokes[0].pts.length, 3);
+  const replay = sent.slice(from);
+  assert.ok(replay.every(s => s.to === guesser));
+  assert.equal(replay[0].ev.type, 'strokes'); assert.equal(replay[0].ev.first, true);
+  const pts = replay.filter(s => s.ev.type === 'stroke' && s.ev.id === 's1').flatMap(s => s.ev.pts);
+  assert.equal(pts.length, 3);
+});
+
+test('replaying a huge drawing never sends a message near the 16 KB PeerJS limit', () => {
+  const { host, sent, until } = setup(2);
+  until(() => lastOf(sent, 'choose'));
+  const drawer = host.snapshot().drawer, guesser = drawer === 'a' ? 'b' : 'a';
+  host.event(drawer, { type: 'pick', word: lastOf(sent, 'choose').ev.options[0] });
+  for (let s = 0; s < 30; s++)
+    for (let k = 0; k < 20; k++)
+      host.event(drawer, { type: 'stroke', id: 's' + s, color: '#123456', size: 1, pts: Array.from({ length: 200 }, (_, i) => [0.123 + i / 1000, 0.456]) });
+  const from = sent.length;
+  host.event(guesser, { type: 'sync' });
+  const replay = sent.slice(from);
+  const biggest = Math.max(...replay.map(s => JSON.stringify({ t: 'ev', d: s.ev }).length));
+  assert.ok(biggest < 12000, `largest replay message ${biggest} bytes`);
+  const total = replay.filter(s => s.ev.type === 'stroke').reduce((n, s) => n + s.ev.pts.length, 0);
+  assert.equal(total, 30 * 4000);
+});
+
+test('guesses that contain the word or are one letter off are never shared as chat', () => {
+  const { host, sent, until } = setup(3);
+  until(() => lastOf(sent, 'choose'));
+  const drawer = host.snapshot().drawer, g = ['p0', 'p1', 'p2'].find(p => p !== drawer);
+  const word = lastOf(sent, 'choose').ev.options[0];
+  host.event(drawer, { type: 'pick', word });
+  for (const text of [word + 's', 'the ' + word, word + ' slice', 'a ' + word + '!']) host.event(g, { type: 'guess', text });
+  assert.deepEqual(sent.filter(s => s.ev.type === 'chat'), []);
+  assert.ok(sent.filter(s => s.ev.type === 'close').every(s => s.to === g));
+  assert.deepEqual(leaks(sent, word, 'p9'), []);
+});
+
+test('a drawer who is away when their turn comes is skipped', () => {
+  const { host, sent, until } = setup(3);
+  until(() => lastOf(sent, 'choose'));
+  const first = host.snapshot().drawer;
+  const away = ['p0', 'p1', 'p2'].find(p => p !== first);
+  host.setConnected(away, false);
+  until(() => host.result() !== null, 600);
+  assert.equal(sent.filter(s => s.ev.type === 'choose' && s.to === away).length, 0);
+  assert.ok(host.result());
 });

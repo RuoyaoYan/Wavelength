@@ -92,3 +92,19 @@ test('a disconnected ball stops steering', () => {
   run(0.5);
   assert.ok(Math.hypot(a.vx, a.vy) < 1);
 });
+
+test('after a rejoin the dash counter restarts and the next press still dashes', () => {
+  const { host, run, S } = setup(2);
+  run(COUNTDOWN + 0.1);
+  const a = S.balls.find(x => x.pid === 'a');
+  host.input('a', { x: 1, y: 0, b: { Dash: 5 } }); host.step(1 / 60);
+  host.input('a', { x: 0, y: 0, b: { Dash: 5 } });
+  a.x = 0; a.y = 0; a.vx = a.vy = 0;
+  run(1.5);
+  assert.equal(S.phase, 'play');
+  a.x = 0; a.y = 0;
+  host.setConnected('a', false); host.setConnected('a', true);
+  a.vx = a.vy = 0;
+  host.input('a', { x: 1, y: 0, b: { Dash: 1 } }); host.step(1 / 60);
+  assert.ok(Math.hypot(a.vx, a.vy) > 300, 'dash after rejoin');
+});

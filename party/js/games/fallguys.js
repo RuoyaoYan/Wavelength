@@ -87,6 +87,7 @@ function createHost({ players, rng }) {
     const ix = b.in.x || 0, iy = b.in.y || 0, m = Math.hypot(ix, iy);
     if (m > 0.01) { b.fx = ix / m; b.fy = iy / m; }
     const presses = b.in.b?.Dive || 0;
+    if (presses < b.diveSeen) b.diveSeen = 0; // phone restarted its counter (rejoin)
     if (presses > b.diveSeen) {
       b.diveSeen = presses;
       if (b.cd <= 0) { b.vx += b.fx * DIVE; b.vy += b.fy * DIVE; b.cd = DIVE_CD; b.dive = DIVE_TIME; }

@@ -78,3 +78,25 @@ test('a connected player\'s name cannot be taken over', () => {
   const r = createRoom(); addPlayer(r, { pid: 'a', name: 'Ann' });
   assert.equal(addPlayer(r, { pid: 'x', name: 'Ann' }).reason, 'name');
 });
+
+test('players who are away are not dealt into the next game', () => {
+  const r = createRoom(); fill(r, 3);
+  setConnected(r, 'p1', false);
+  assert.deepEqual(activePlayers(r).map(p => p.pid), ['p0', 'p2']);
+});
+
+test('a full room frees an away player\'s slot between games', () => {
+  const r = createRoom(); fill(r, MAX_PLAYERS);
+  setConnected(r, 'p3', false);
+  const res = addPlayer(r, { pid: 'new', name: 'Newbie' });
+  assert.equal(res.ok, true);
+  assert.equal(r.players.length, MAX_PLAYERS);
+  assert.equal(r.players.some(p => p.pid === 'p3'), false);
+});
+
+test('a full room does not drop an away player in the middle of a game', () => {
+  const r = createRoom(); fill(r, MAX_PLAYERS);
+  setConnected(r, 'p3', false);
+  r.inGame = true;
+  assert.equal(addPlayer(r, { pid: 'new', name: 'Newbie' }).reason, 'full');
+});

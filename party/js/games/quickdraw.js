@@ -93,7 +93,9 @@ function createView({ el, me, players, isScreen, send }) {
     clearTimeout(timer);
     round = ev.round; answered = []; myTime = null; shownAt = 0;
     state = 'wait';
-    render('Wait…', me ? 'Don\'t tap yet' : '', ticks());
+    // Spectator screens never flash DRAW: a TV with no network delay would tip players off early.
+    if (!me) { render('Eyes on your phones!', 'Tap the instant your phone says DRAW', ticks()); return; }
+    render('Wait…', 'Don\'t tap yet', ticks());
     timer = setTimeout(() => {
       if (state !== 'wait') return;
       state = 'draw';

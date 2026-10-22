@@ -27,7 +27,13 @@ export function addPlayer(room, { pid, name }) {
     away.connected = true;
     return { ok: true, player: away, rejoined: true };
   }
-  if (room.players.length >= MAX_PLAYERS) return { ok: false, reason: 'full' };
+  if (room.players.length >= MAX_PLAYERS) {
+    // Between games, someone who left gives up their seat to a newcomer.
+    const gone = !room.inGame && room.players.find(p => !p.connected);
+    if (!gone) return { ok: false, reason: 'full' };
+    room.players.splice(room.players.indexOf(gone), 1);
+    delete room.scores[gone.pid];
+  }
   if (room.players.some(p => key(p.name) === key(clean))) return { ok: false, reason: 'name' };
   const used = new Set(room.players.map(p => p.color));
   const player = { pid, name: clean, color: COLORS.find(c => !used.has(c)), connected: true, waiting: room.inGame };
@@ -40,7 +46,8 @@ export function setConnected(room, pid, connected) {
   if (p) p.connected = connected;
 }
 
-export const activePlayers = room => room.players.filter(p => !p.waiting);
+// Who gets dealt into the next game: here now, and not waiting for a game in progress.
+export const activePlayers = room => room.players.filter(p => !p.waiting && p.connected);
 
 // placements: groups of tied pids, best first. A tied group shares the place of
 // its first member; the next group's place skips past everyone in it.

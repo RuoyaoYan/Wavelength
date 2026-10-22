@@ -173,3 +173,16 @@ test('reclaiming a dropped player by name from a new device id takes over their 
   back.sendInput({ x: 1, y: 0, b: {} }); await flush();
   assert.equal(g.last.a.x, 1);
 });
+
+test('a second tab with the same id replaces the first, which is told and stays off', async () => {
+  const { net, host, clients } = await setup();
+  const old = clients[0];
+  let replaced = 0; old.onReplaced = () => replaced++;
+  const dup = await join(net, 'a', 'P0'); await flush();
+  await new Promise(r => setTimeout(r, 400));
+  assert.equal(replaced, 1);
+  assert.equal(old.replaced, true);
+  assert.equal(got(old, 'onHostGone').length, 0);
+  assert.equal(host.room.players.find(p => p.pid === 'a').connected, true);
+  assert.equal(dup.welcomed, true);
+});
