@@ -21,6 +21,12 @@ export function addPlayer(room, { pid, name }) {
   }
   const clean = String(name ?? '').trim().slice(0, 16);
   if (!clean) return { ok: false, reason: 'empty' };
+  // Same name as someone who dropped out: that's them coming back on a new tab or device.
+  const away = room.players.find(p => !p.connected && key(p.name) === key(clean));
+  if (away) {
+    away.connected = true;
+    return { ok: true, player: away, rejoined: true };
+  }
   if (room.players.length >= MAX_PLAYERS) return { ok: false, reason: 'full' };
   if (room.players.some(p => key(p.name) === key(clean))) return { ok: false, reason: 'name' };
   const used = new Set(room.players.map(p => p.color));

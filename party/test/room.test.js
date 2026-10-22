@@ -65,3 +65,16 @@ test('makeCode uses the safe alphabet',()=>{
 test('random game never repeats the last one',()=>{
   for(let i=0;i<50;i++)assert.equal(pickRandomGame(['a','b'],'a',Math.random),'b');
 });
+test('a disconnected player can be reclaimed by name from a new device id', () => {
+  const r = createRoom(); addPlayer(r, { pid: 'old', name: 'Ann' }); addPlayer(r, { pid: 'b', name: 'Bob' });
+  awardPlacements(r, [['old'], ['b']]);
+  setConnected(r, 'old', false);
+  const res = addPlayer(r, { pid: 'new', name: 'ann' });
+  assert.equal(res.ok, true); assert.equal(res.rejoined, true);
+  assert.equal(res.player.pid, 'old');
+  assert.equal(r.players.length, 2); assert.equal(r.scores.old, 5);
+});
+test('a connected player\'s name cannot be taken over', () => {
+  const r = createRoom(); addPlayer(r, { pid: 'a', name: 'Ann' });
+  assert.equal(addPlayer(r, { pid: 'x', name: 'Ann' }).reason, 'name');
+});

@@ -149,3 +149,27 @@ test('host and play: local player joins and gets local events', async () => {
   host.tick(STEP); host.tick(STEP); host.tick(STEP);
   assert.deepEqual(seen.map(s => s[0]), ['start', 'snap']);
 });
+
+test('client knows the host closed the room on purpose', async () => {
+  const { host, clients } = await setup();
+  host.close(); await flush();
+  for (const c of clients) assert.equal(c.closedByHost, true);
+});
+
+test('dropped connection is not mistaken for the host closing', async () => {
+  const { clients } = await setup();
+  clients[0].conn.close(); await flush();
+  assert.equal(got(clients[0], 'onHostGone').length, 1);
+  assert.notEqual(clients[0].closedByHost, true);
+});
+
+test('reclaiming a dropped player by name from a new device id takes over their slot', async () => {
+  const { host, g, net, clients } = await setup();
+  host.startGame('stub'); await flush();
+  clients[0].conn.close(); await flush();
+  const back = await join(net, 'fresh-id', 'P0'); await flush();
+  assert.equal(back.pid, 'a');
+  assert.equal(got(back, 'onStart')[0].game, 'stub');
+  back.sendInput({ x: 1, y: 0, b: {} }); await flush();
+  assert.equal(g.last.a.x, 1);
+});

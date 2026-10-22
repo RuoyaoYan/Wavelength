@@ -29,7 +29,7 @@ export class HostSession {
       if (msg.t === 'hello' && !pid) {
         const res = addPlayer(this.room, { pid: msg.pid, name: msg.name });
         if (!res.ok) { conn.sendR({ t: 'reject', reason: res.reason }); setTimeout(() => conn.close(), 300); return; }
-        pid = msg.pid;
+        pid = res.player.pid; // may differ from msg.pid when a dropped player is reclaimed by name
         const old = this.conns.get(pid);
         this.conns.set(pid, conn);
         if (old && old !== conn) old.close();
@@ -124,9 +124,12 @@ export class HostSession {
   endParty() { this.room.partyOver = true; this.broadcastRoom(); }
 
   close() {
-    for (const c of this.conns.values()) { c.sendR({ t: 'bye' }); c.close(); }
+    // Give the goodbye a moment to leave before the links drop.
+    const conns = [...this.conns.values()];
+    for (const c of conns) c.sendR({ t: 'bye' });
     this.conns.clear();
-    this.transport.close();
+    this.game = null;
+    setTimeout(() => { conns.forEach(c => c.close()); this.transport.close(); }, 250);
   }
 }
 
@@ -138,13 +141,13 @@ export class ClientSession {
     this.onEnd = noop; this.onReject = noop; this.onHostGone = noop;
     conn.onR(msg => {
       switch (msg.t) {
-        case 'welcome': this.welcomed = true; break;
-        case 'reject': this.gone = true; this.onReject(msg.reason); break;
+        case 'welcome': this.welcomed = true; this.pid = msg.pid; break;
+        case 'reject': this.gone = this.rejected = true; this.onReject(msg.reason); break;
         case 'room': this.onRoom(msg.room); break;
         case 'start': this.onStart({ game: msg.game, players: msg.players }); break;
         case 'ev': this.onEvent(msg.d); break;
         case 'end': this.onEnd({ placements: msg.placements, room: msg.room }); break;
-        case 'bye': this.hostGone(); break;
+        case 'bye': this.closedByHost = true; this.hostGone(); break;
       }
     });
     conn.onU(msg => { if (msg.t === 'snap') this.onSnap(msg.s); });
