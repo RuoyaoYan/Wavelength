@@ -1,0 +1,21 @@
+// Easy-to-draw things for Pictionary.
+export const WORDS = [
+  'apple', 'banana', 'pizza', 'burger', 'ice cream', 'cake', 'donut', 'cookie', 'carrot', 'cheese',
+  'egg', 'grapes', 'pear', 'watermelon', 'cherry', 'lemon', 'pineapple', 'popcorn', 'sandwich', 'taco',
+  'cat', 'dog', 'fish', 'bird', 'snake', 'spider', 'turtle', 'rabbit', 'elephant', 'giraffe',
+  'lion', 'monkey', 'penguin', 'octopus', 'shark', 'whale', 'snail', 'bee', 'butterfly', 'frog',
+  'duck', 'owl', 'pig', 'cow', 'horse', 'mouse', 'bat', 'crab', 'dinosaur', 'unicorn',
+  'house', 'castle', 'bridge', 'tent', 'lighthouse', 'pyramid', 'igloo', 'tower', 'church', 'windmill',
+  'car', 'bus', 'train', 'bicycle', 'airplane', 'rocket', 'boat', 'helicopter', 'tractor', 'skateboard',
+  'sun', 'moon', 'star', 'cloud', 'rainbow', 'lightning', 'snowman', 'tree', 'flower', 'cactus',
+  'mountain', 'volcano', 'island', 'beach', 'waterfall', 'leaf', 'mushroom', 'palm tree', 'rose', 'tornado',
+  'chair', 'table', 'bed', 'lamp', 'clock', 'door', 'window', 'key', 'ladder', 'umbrella',
+  'phone', 'computer', 'television', 'camera', 'headphones', 'guitar', 'drum', 'piano', 'trumpet', 'microphone',
+  'book', 'pencil', 'scissors', 'glasses', 'hat', 'shoe', 'sock', 'shirt', 'crown', 'ring',
+  'ball', 'kite', 'balloon', 'gift', 'candle', 'robot', 'ghost', 'alien', 'pirate', 'mermaid',
+  'sword', 'shield', 'bow', 'anchor', 'flag', 'map', 'compass', 'treasure', 'bomb', 'magnet',
+  'toothbrush', 'bathtub', 'toilet', 'mirror', 'spoon', 'fork', 'knife', 'cup', 'teapot', 'bottle',
+  'heart', 'smile', 'eye', 'hand', 'foot', 'nose', 'ear', 'tooth', 'skeleton', 'brain',
+  'football', 'basketball', 'tennis', 'trophy', 'medal', 'bowling', 'dice', 'chess', 'puzzle', 'yo-yo',
+  'snowflake', 'fire', 'tooth fairy', 'dragon', 'wizard', 'witch', 'vampire', 'zombie', 'angel', 'ninja',
+];
